@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photon Connection Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/photon-javascript-sdk@latest/dist/Photon-Javascript_SDK.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 18px;
+        }
+        #log {
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .log-entry {
+            margin: 10px 0;
+            padding: 5px;
+            border-left: 3px solid #0f0;
+            padding-left: 10px;
+        }
+        .error { border-left-color: #f00; color: #f00; }
+        .success { border-left-color: #0f0; color: #0f0; }
+        .info { border-left-color: #ff0; color: #ff0; }
+        h1 { text-align: center; color: #0ff; }
+        #status {
+            font-size: 24px;
+            text-align: center;
+            padding: 20px;
+            background: #222;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>PHOTON TEST</h1>
+    <div id="status">STARTING...</div>
+    <div id="log"></div>
+
+    <script>
+        const logDiv = document.getElementById('log');
+        const statusDiv = document.getElementById('status');
+        
+        function log(message, type = 'info') {
+            console.log(message);
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = new Date().toLocaleTimeString() + ' - ' + message;
+            logDiv.insertBefore(entry, logDiv.firstChild);
+        }
+
+        function updateStatus(text) {
+            statusDiv.textContent = text;
+        }
+
+        // Wait for Photon to load
+        setTimeout(() => {
+            if (typeof Photon === 'undefined') {
+                log('PHOTON SDK NOT LOADED!', 'error');
+                updateStatus('FAILED: SDK NOT LOADED');
+                return;
+            }
+
+            log('Photon SDK Loaded ✓', 'success');
+            updateStatus('SDK LOADED - CONNECTING...');
+
+            try {
+                const client = new Photon.LoadBalancing.LoadBalancingClient(
+                    Photon.ConnectionProtocol.Wss,
+                    "567c317e-4d83-483e-ab5c-a2cab64d54b4",
+                    "1.0"
+                );
+
+                log('Client created ✓', 'success');
+
+                client.onStateChange = (state) => {
+                    log('State: ' + state, 'info');
+                    
+                    if (state === Photon.LoadBalancing.LoadBalancingClient.State.JoinedLobby) {
+                        log('Joined lobby! Now joining room...', 'success');
+                        updateStatus('JOINED LOBBY - JOINING ROOM...');
+                        client.joinOrCreateRoom("MOBILE_TEST_123", {
+                            isVisible: true,
+                            isOpen: true,
+                            maxPlayers: 10
+                        });
+                    }
+                };
+
+                client.onJoinRoom = () => {
+                    const room = client.myRoom();
+                    const actor = client.myActor();
+                    
+                    log('✓✓✓ JOINED ROOM: ' + room.name, 'success');
+                    log('Your Actor ID: ' + actor.actorNr, 'success');
+                    log('Players in room: ' + room.playerCount, 'success');
+                    
+                    updateStatus('CONNECTED! ROOM: ' + room.name + ' | PLAYERS: ' + room.playerCount);
+                };
+
+                client.onActorJoin = (actor) => {
+                    log('NEW PLAYER JOINED! Actor ID: ' + actor.actorNr, 'success');
+                    const room = client.myRoom();
+                    updateStatus('CONNECTED! ROOM: ' + room.name + ' | PLAYERS: ' + room.playerCount);
+                };
+
+                client.onActorLeave = (actor) => {
+                    log('Player left. Actor ID: ' + actor.actorNr, 'info');
+                    const room = client.myRoom();
+                    updateStatus('CONNECTED! ROOM: ' + room.name + ' | PLAYERS: ' + room.playerCount);
+                };
+
+                client.onError = (errorCode, errorMsg) => {
+                    log('ERROR: ' + errorCode + ' - ' + errorMsg, 'error');
+                    updateStatus('ERROR: ' + errorMsg);
+                };
+
+                log('Connecting to Photon Cloud (US region)...', 'info');
+                client.setCustomAuthentication("username=TestUser" + Math.floor(Math.random() * 1000));
+                client.connectToRegionMaster("us");
+
+                // Service loop
+                setInterval(() => {
+                    client.service();
+                }, 100);
+
+            } catch (err) {
+                log('EXCEPTION: ' + err.message, 'error');
+                updateStatus('FAILED: ' + err.message);
+            }
+
+        }, 1000); // Wait 1 second for SDK to load
+    </script>
+</body>
+</html>
